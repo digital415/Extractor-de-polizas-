@@ -26,6 +26,14 @@
     "nro de motor", "nro. de motor", "n° de motor", "no. de motor", "motor",
   ];
 
+  const ETIQUETAS_POLIZA = [
+    "poliza", "póliza", "numero de poliza", "número de póliza", "nro de poliza",
+    "nro. de poliza", "n° de poliza", "n° de póliza", "no. de poliza",
+  ];
+
+  // Formato de respaldo si la póliza aparece sin etiqueta, por ejemplo 04-08-2228179-0
+  const FORMATO_POLIZA = /\b\d{2}-\d{2}-\d{5,9}-\d\b/g;
+
   // Palabras que marcan el final del nombre del cliente en la misma línea
   // (por ejemplo: "Cliente: JUAN PÉREZ   RIF: V-12345678")
   const CORTE_NOMBRE = [
@@ -54,6 +62,7 @@
   const ET_CLIENTE = patron(ETIQUETAS_CLIENTE);
   const ET_CHASIS = patron(ETIQUETAS_CHASIS);
   const ET_MOTOR = patron(ETIQUETAS_MOTOR);
+  const ET_POLIZA = patron(ETIQUETAS_POLIZA);
 
   function buscarCodigos(texto, etiqueta) {
     const t = quitarAcentos(texto);
@@ -96,10 +105,10 @@
     return "";
   }
 
-  /* Devuelve una fila por vehículo: {cliente, chasis, motor, nota} */
+  /* Devuelve una fila por vehículo: {cliente, poliza, chasis, motor, nota} */
   function extraer(texto) {
     if (texto.replace(/\s/g, "").length < 30) {
-      return [{ cliente: "", chasis: "", motor: "", nota: "El PDF no tiene texto (¿es un escaneo?)" }];
+      return [{ cliente: "", poliza: "", chasis: "", motor: "", nota: "El PDF no tiene texto (¿es un escaneo?)" }];
     }
     const notas = [];
     const cliente = buscarCliente(texto);
@@ -112,6 +121,12 @@
     }
     const motores = buscarCodigos(texto, ET_MOTOR).filter(m => !chasis.includes(m));
 
+    let polizas = buscarCodigos(texto, ET_POLIZA).filter(p => !chasis.includes(p) && !motores.includes(p));
+    if (!polizas.length) {
+      polizas = [...new Set(texto.match(FORMATO_POLIZA) || [])];
+      if (polizas.length) notas.push("Póliza tomada por formato");
+    }
+
     const n = Math.max(chasis.length, motores.length, 1);
     if (n > 1) notas.push(n + " vehículos en la proforma");
     if (chasis.length && motores.length && chasis.length !== motores.length)
@@ -119,7 +134,9 @@
 
     const filas = [];
     for (let i = 0; i < n; i++) {
-      filas.push({ cliente, chasis: chasis[i] || "", motor: motores[i] || "", nota: notas.join("; ") });
+      // Si hay una póliza por vehículo se emparejan; si no, todas las filas llevan la primera
+      const poliza = polizas.length === n ? polizas[i] : (polizas[0] || "");
+      filas.push({ cliente, poliza, chasis: chasis[i] || "", motor: motores[i] || "", nota: notas.join("; ") });
     }
     return filas;
   }

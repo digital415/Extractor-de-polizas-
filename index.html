@@ -73,7 +73,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 .search{font:inherit;flex:1 1 260px;max-width:420px;padding:9px 12px;border:1.5px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink)}
 .check{display:flex;gap:6px;align-items:center;font-size:.92rem;cursor:pointer}
 .scroller{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px}
-table{border-collapse:collapse;width:100%;min-width:860px;font-size:.92rem}
+table{border-collapse:collapse;width:100%;min-width:1060px;font-size:.92rem}
 th{text-align:left;font-weight:650;font-stretch:90%;padding:12px 10px;border-bottom:2px solid var(--ink);white-space:nowrap}
 td{border-bottom:1px solid var(--line);padding:3px 4px;vertical-align:middle}
 tr:last-child td{border-bottom:0}
@@ -110,7 +110,7 @@ footer{margin-top:48px;font-size:.85rem;color:var(--steel)}
 <div class="wrap">
   <p class="brand">Movinsa</p>
   <h1>Extractor de proformas</h1>
-  <p class="lead">Sube las proformas en PDF y obtén el nombre del cliente, el número de chasis y el número de motor en una tabla que puedes revisar y descargar en Excel. <strong>Los archivos se leen en tu computadora y no se envían a ningún servidor.</strong></p>
+  <p class="lead">Sube las proformas en PDF y obtén el nombre del cliente, el número de póliza, el número de chasis y el número de motor en una tabla que puedes revisar y descargar en Excel. <strong>Los archivos se leen en tu computadora y no se envían a ningún servidor.</strong></p>
 
   <div class="tray" id="tray">
     <div class="tray-text">
@@ -143,13 +143,13 @@ footer{margin-top:48px;font-size:.85rem;color:var(--steel)}
       </div>
     </div>
     <div class="toolbar">
-      <input class="search" id="search" type="search" placeholder="Buscar cliente, chasis o motor…" aria-label="Buscar en la tabla">
+      <input class="search" id="search" type="search" placeholder="Buscar cliente, póliza, chasis o motor…" aria-label="Buscar en la tabla">
       <label class="check"><input type="checkbox" id="onlyMissing"> Solo incompletos</label>
       <label class="check"><input type="checkbox" id="onlyDup"> Solo duplicados</label>
     </div>
     <div class="scroller">
       <table>
-        <thead><tr><th>Archivo</th><th>Cliente</th><th>Chasis</th><th>Motor</th><th>Nota</th><th></th></tr></thead>
+        <thead><tr><th>Archivo</th><th>Cliente</th><th>Póliza</th><th>Chasis</th><th>Motor</th><th>Nota</th><th></th></tr></thead>
         <tbody id="body"></tbody>
       </table>
     </div>
@@ -176,8 +176,9 @@ footer{margin-top:48px;font-size:.85rem;color:var(--steel)}
   const $ = id => document.getElementById(id);
   const FIELDS = [
     {k:"cliente", label:"Cliente", wide:true},
-    {k:"chasis", label:"Chasis", code:true},
-    {k:"motor", label:"Motor", code:true}
+    {k:"poliza", label:"Póliza", code:true},
+    {k:"chasis", label:"Chasis", code:true, dup:true},
+    {k:"motor", label:"Motor", code:true, dup:true}
   ];
 
   let rows = [];
@@ -215,7 +216,7 @@ footer{margin-top:48px;font-size:.85rem;color:var(--steel)}
     return rows.filter(r=>{
       if (om && !incompleta(r)) return false;
       if (od && !filaDup(r)) return false;
-      if (q && !norm(r.archivo+" "+r.cliente+" "+r.chasis+" "+r.motor).includes(q)) return false;
+      if (q && !norm(r.archivo+" "+r.cliente+" "+(r.poliza||"")+" "+r.chasis+" "+r.motor).includes(q)) return false;
       return true;
     });
   }
@@ -229,7 +230,7 @@ footer{margin-top:48px;font-size:.85rem;color:var(--steel)}
     const slice=list.slice(page*PAGE, page*PAGE+PAGE);
     if (!slice.length){
       const tr=document.createElement("tr"), td=document.createElement("td");
-      td.colSpan=6; td.className="empty-state";
+      td.colSpan=7; td.className="empty-state";
       td.textContent = rows.length ? "Ningún registro coincide con el filtro." : "Sube proformas para empezar. Cada vehículo encontrado aparece aquí como una fila.";
       tr.append(td); body.append(tr);
     }
@@ -243,9 +244,9 @@ footer{margin-top:48px;font-size:.85rem;color:var(--steel)}
         inp.value=r[f.k]||""; inp.placeholder="—";
         inp.setAttribute("aria-label", f.label+" de "+r.archivo);
         inp.classList.toggle("empty", !inp.value.trim());
-        if (f.code && esDup(r,f.k)){ inp.classList.add("dup"); inp.title="Este "+f.label.toLowerCase()+" aparece en más de una fila"; }
+        if (f.dup && esDup(r,f.k)){ inp.classList.add("dup"); inp.title="Este "+f.label.toLowerCase()+" aparece en más de una fila"; }
         inp.addEventListener("input",()=>{ r[f.k]=inp.value; inp.classList.toggle("empty",!inp.value.trim()); });
-        inp.addEventListener("change",()=>{ save(); if (f.code) render(); else contarResumen(); });
+        inp.addEventListener("change",()=>{ save(); if (f.dup) render(); else contarResumen(); });
         td.append(inp); tr.append(td);
       });
       const tn=document.createElement("td"); tn.className="note"; tn.textContent=r.nota||""; tr.append(tn);
@@ -321,7 +322,7 @@ footer{margin-top:48px;font-size:.85rem;color:var(--steel)}
         Extractor.extraer(texto).forEach(e=>rows.push({id:uid(), docId, fileKey:fk, archivo:nombre, ...e}));
       }catch(err){
         errores++;
-        rows.push({id:uid(), docId, fileKey:fk, archivo:nombre, cliente:"", chasis:"", motor:"", nota:"No se pudo abrir el PDF (¿está dañado o protegido?)"});
+        rows.push({id:uid(), docId, fileKey:fk, archivo:nombre, cliente:"", poliza:"", chasis:"", motor:"", nota:"No se pudo abrir el PDF (¿está dañado o protegido?)"});
       }
       hechas++;
       if (hechas%20===0){ save(); render(); }
@@ -335,13 +336,13 @@ footer{margin-top:48px;font-size:.85rem;color:var(--steel)}
   /* ---------- Exportar ---------- */
   function matriz(){
     contar();
-    return [["Archivo","Cliente","Chasis","Motor","Incompleto","Duplicado","Nota"],
-      ...rows.map(r=>[r.archivo,r.cliente||"",r.chasis||"",r.motor||"",incompleta(r)?"Sí":"",filaDup(r)?"Sí":"",r.nota||""])];
+    return [["Archivo","Cliente","Póliza","Chasis","Motor","Incompleto","Duplicado","Nota"],
+      ...rows.map(r=>[r.archivo,r.cliente||"",r.poliza||"",r.chasis||"",r.motor||"",incompleta(r)?"Sí":"",filaDup(r)?"Sí":"",r.nota||""])];
   }
   const fecha=()=>new Date().toISOString().slice(0,10);
   $("xlsxBtn").onclick=()=>{
     const ws=XLSX.utils.aoa_to_sheet(matriz());
-    ws["!cols"]=[{wch:34},{wch:38},{wch:24},{wch:22},{wch:11},{wch:11},{wch:36}];
+    ws["!cols"]=[{wch:34},{wch:38},{wch:20},{wch:24},{wch:22},{wch:11},{wch:11},{wch:36}];
     ws["!autofilter"]={ref:ws["!ref"]};
     const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Proformas");
     XLSX.writeFile(wb,`proformas-${fecha()}.xlsx`);
