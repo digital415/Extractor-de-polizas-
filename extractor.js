@@ -1,198 +1,259 @@
 /*
- * Extractor de proformas: reglas de búsqueda
- * -------------------------------------------
- * Aquí se define cómo se encuentran el cliente, el chasis y el motor.
- * Si las proformas cambian de formato o usan otra palabra para un dato,
- * basta con agregarla a la lista correspondiente. No importan mayúsculas ni acentos.
+ * Extractor de pólizas: reglas de búsqueda
+ * ----------------------------------------
+ * Aquí se define cómo se encuentran el asegurado, la póliza, el chasis y el motor.
+ * Si cambia el formato o un dato aparece con otra palabra, basta con agregarla
+ * a la lista correspondiente. No importan mayúsculas, acentos ni puntos.
+ * Las listas van en orden de prioridad: se usa la primera etiqueta que aparezca.
  */
 (function (global) {
   "use strict";
 
   const ETIQUETAS_CLIENTE = [
-    "cliente", "nombre del cliente", "señor(es)", "señores", "señor", "sr(es)",
-    "razon social", "razón social", "nombre o razon social", "nombre o razón social",
-    "comprador", "facturar a", "a nombre de", "nombre",
-  ];
-
-  const ETIQUETAS_CHASIS = [
-    "serial de chasis", "serial chasis", "numero de chasis", "número de chasis",
-    "nro de chasis", "nro. de chasis", "n° de chasis", "no. de chasis", "chasis",
-    "serial de carroceria", "serial de carrocería", "serial carroceria",
-    "vin", "n° de serie", "numero de serie", "número de serie", "serie",
-  ];
-
-  const ETIQUETAS_MOTOR = [
-    "serial de motor", "serial motor", "numero de motor", "número de motor",
-    "nro de motor", "nro. de motor", "n° de motor", "no. de motor", "motor",
+    "asegurado", "nombre del asegurado", "contratante", "tomador", "cliente",
+    "nombre del cliente", "señor(es)", "razón social", "propietario", "a nombre de",
   ];
 
   const ETIQUETAS_POLIZA = [
-    "poliza", "póliza", "numero de poliza", "número de póliza", "nro de poliza",
-    "nro. de poliza", "n° de poliza", "n° de póliza", "no. de poliza",
+    "póliza", "número de póliza", "certificado",
   ];
 
-  // Formato de respaldo si la póliza aparece sin etiqueta, por ejemplo 04-08-2228179-0
-  const FORMATO_POLIZA = /\b\d{2}-\d{2}-\d{5,9}-\d\b/g;
+  const ETIQUETAS_CHASIS = [
+    "chasis", "serial de chasis", "vin", "serial de carrocería", "serie",
+  ];
 
-  // Palabras que marcan el final del nombre del cliente en la misma línea
-  // (por ejemplo: "Cliente: JUAN PÉREZ   RIF: V-12345678")
+  const ETIQUETAS_MOTOR = [
+    "motor", "serial de motor",
+  ];
+
+  // Formato de las pólizas, por ejemplo 04-08-2228179-0.
+  // Se usa si la etiqueta no aparece, y también se busca en el nombre del archivo.
+  const FORMATO_POLIZA = /\b\d{2}-\d{2}-\d{5,9}-\d\b/;
+
+  // Palabras que marcan el final del nombre del asegurado en la misma línea
   const CORTE_NOMBRE = [
-    "rif", "r.i.f", "c.i", "ci:", "cedula", "cédula", "nit", "ruc", "dni", "cuit",
-    "telefono", "teléfono", "tlf", "tel:", "fecha", "direccion", "dirección",
-    "correo", "email", "e-mail", "vendedor", "proforma", "n°", "nro",
+    "ruc", "r.u.c", "cedula", "cédula", "c.i", "pasaporte", "telefono", "teléfono",
+    "fecha", "direccion", "dirección", "correo", "email", "agencia", "factura",
   ];
 
   /* ===================== No hace falta tocar lo de abajo ===================== */
 
-  const VIN_RE = /\b[A-HJ-NPR-Z0-9]{17}\b/g;                // VIN: 17 caracteres, sin I, O ni Q
-  const CODIGO = "([A-Z0-9][A-Z0-9\\-\\/\\.]{3,24}[A-Z0-9])"; // serial de 5 a 26 caracteres
-  const SEP = "\\s*(?:N[°ºo]\\.?|NRO\\.?|NO\\.?|#)?\\s*[:\\.\\-]?\\s*";
-
   const ACENTOS = { "Á": "A", "É": "E", "Í": "I", "Ó": "O", "Ú": "U", "Ü": "U",
                     "á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ü": "u" };
-  // Cambia letra por letra, así las posiciones del texto no se mueven
-  const quitarAcentos = s => s.replace(/[ÁÉÍÓÚÜáéíóúü]/g, c => ACENTOS[c]);
+  const plano = s => s.replace(/[ÁÉÍÓÚÜáéíóúü]/g, c => ACENTOS[c]).toLowerCase(); // misma longitud
   const escapar = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-  function patron(etiquetas) {
-    const unicas = [...new Set(etiquetas.map(e => quitarAcentos(e.toLowerCase())))];
-    unicas.sort((a, b) => b.length - a.length); // gana la etiqueta más específica
-    return "(?:" + unicas.map(escapar).join("|") + ")";
+  // "No. de", "N°", "Nro.", "Número de" pueden ir antes o después de la etiqueta
+  const NUM = "(?:n[°ºo]|nro|numero|num|no)\\.?";
+  function patron(lista) {
+    const partes = [...new Set(lista.map(plano))].sort((a, b) => b.length - a.length)
+      .map(e => escapar(e).replace(/\\\./g, "\\.?").replace(/ +/g, "\\s*"));
+    return new RegExp(
+      "(?:^|[^a-z0-9])((?:" + NUM + "\\s*(?:de\\s*(?:la\\s*|el\\s*)?)?)?(?:" + partes.join("|") + ")(?![a-z0-9])" +
+      "\\s*(?:" + NUM + "(?![a-z0-9]))?\\s*[:.#]?)", "g");
   }
-  const ET_CLIENTE = patron(ETIQUETAS_CLIENTE);
-  const ET_CHASIS = patron(ETIQUETAS_CHASIS);
-  const ET_MOTOR = patron(ETIQUETAS_MOTOR);
-  const ET_POLIZA = patron(ETIQUETAS_POLIZA);
+  const RE = {
+    cliente: ETIQUETAS_CLIENTE.map(e => patron([e])),   // por prioridad
+    poliza: [patron(ETIQUETAS_POLIZA)],
+    chasis: [patron(ETIQUETAS_CHASIS)],
+    motor: [patron(ETIQUETAS_MOTOR)],
+  };
 
-  function buscarCodigos(texto, etiqueta) {
-    const t = quitarAcentos(texto);
-    const re = new RegExp("\\b" + etiqueta + "(?![a-z0-9])" + SEP + "(?:\\n\\s*)?" + CODIGO, "gi");
+  /* ---------- Filas de palabras con posición ---------- */
+  // Cada fila: { top, h, words: [{t, x0, x1, top, h}] }, ordenadas de arriba abajo
+  function agruparFilas(words) {
+    words = words.filter(w => w.t && w.t.trim()).sort((a, b) => a.top - b.top || a.x0 - b.x0);
+    const filas = [];
+    for (const w of words) {
+      const c = w.top + w.h / 2;
+      const f = filas.find(F => Math.abs(F.c - c) <= Math.max(2, Math.min(F.h, w.h) * 0.55));
+      if (f) { f.words.push(w); } else filas.push({ c, top: w.top, h: w.h, words: [w] });
+    }
+    for (const f of filas) {
+      f.words.sort((a, b) => a.x0 - b.x0);
+      f.h = f.words.reduce((m, w) => Math.max(m, w.h), 0);
+      // Texto plano de la fila y posición de cada palabra dentro de él
+      let txt = "";
+      f.words.forEach(w => { if (txt) txt += " "; w.ini = txt.length; txt += w.t; w.fin = txt.length; });
+      f.texto = txt;
+      f.plano = plano(txt);
+    }
+    filas.sort((a, b) => a.c - b.c);
+    return filas;
+  }
+
+  // Desde pdf.js (PDF con texto). Se usa por página; pageTop separa las páginas.
+  function palabrasDePdf(items, pageTop) {
     const out = [];
-    let m;
-    while ((m = re.exec(t))) {
-      const v = m[1].toUpperCase().replace(/^[.\-\/]+|[.\-\/]+$/g, "");
-      if (/\d/.test(v) && !out.includes(v)) out.push(v);
+    for (const it of items) {
+      if (typeof it.str !== "string" || !it.str.trim()) continue;
+      const h = Math.abs(it.transform[3]) || it.height || 10;
+      const top = pageTop - it.transform[5] - h;
+      const x = it.transform[4], cw = it.width / Math.max(1, it.str.length);
+      const re = /\S+/g; let m;
+      while ((m = re.exec(it.str))) {
+        out.push({ t: m[0], x0: x + m.index * cw, x1: x + (m.index + m[0].length) * cw, top, h });
+      }
+    }
+    return out;
+  }
+
+  // Desde el OCR (tesseract.js)
+  function palabrasDeOcr(words, pageTop) {
+    return words.map(w => ({ t: w.text, x0: w.bbox.x0, x1: w.bbox.x1, top: pageTop + w.bbox.y0, h: w.bbox.y1 - w.bbox.y0 }));
+  }
+
+  // Texto legible, con espacios grandes entre columnas (para mostrar en "Texto")
+  function textoDeFilas(filas) {
+    return filas.map(f => {
+      let s = "", fin = null;
+      for (const w of f.words) {
+        if (fin !== null) s += (w.x0 - fin > f.h * 1.5) ? "   " : " ";
+        s += w.t; fin = w.x1;
+      }
+      return s;
+    }).join("\n");
+  }
+
+  /* ---------- Búsqueda de valores ---------- */
+  const esEtiqueta = t => /:$/.test(t);
+  function limpiarCodigo(t) { return t.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "").toUpperCase(); }
+  function esCodigo(v) { return v.length >= 5 && v.length <= 30 && /\d/.test(v) && /^[A-Z0-9][A-Z0-9\-\/.]*$/.test(v); }
+
+  // Todas las apariciones de una etiqueta: {fila, iPalabra (primera), jPalabra (siguiente a la etiqueta)}
+  function apariciones(filas, re) {
+    const out = [];
+    filas.forEach((f, fi) => {
+      re.lastIndex = 0; let m;
+      while ((m = re.exec(f.plano))) {
+        const ini = m.index + m[0].length - m[1].length, fin = m.index + m[0].length;
+        const i = f.words.findIndex(w => w.fin > ini);
+        let j = f.words.findIndex(w => w.ini >= fin);
+        if (j < 0) j = f.words.length;
+        // Si la etiqueta termina a mitad de palabra ("Motor:166FM"), esa palabra es el valor
+        const partida = f.words.find(w => w.ini < fin && w.fin > fin);
+        out.push({ fi, i, j, resto: partida ? partida.t.slice(fin - partida.ini) : "" });
+      }
+    });
+    return out;
+  }
+
+  // Palabras de la misma fila después de la etiqueta, hasta otra etiqueta o un hueco grande
+  function valorALaDerecha(f, a) {
+    const vals = [];
+    if (a.resto) vals.push(a.resto);
+    let fin = a.j > 0 ? f.words[a.j - 1].x1 : null;
+    for (let k = a.j; k < f.words.length; k++) {
+      const w = f.words[k];
+      if (fin !== null && vals.length && w.x0 - fin > f.h * 2.5) break;
+      if (esEtiqueta(w.t) || (k + 1 < f.words.length && /^(no|n[°º]|nro)\.?:?$/i.test(f.words[k + 1].t) && esEtiqueta(f.words[k + 1].t))) break;
+      vals.push(w.t); fin = w.x1;
+    }
+    return vals;
+  }
+
+  // Palabra de las filas de abajo alineada con el inicio de la etiqueta (formato en columnas)
+  function valorDebajo(filas, a, valida) {
+    const f = filas[a.fi], x = f.words[a.i].x0;
+    for (let k = a.fi + 1; k < filas.length && k <= a.fi + 2; k++) {
+      const g = filas[k];
+      if (g.c - f.c > f.h * 4) break;
+      const w = g.words.find(w => Math.abs(w.x0 - x) <= Math.max(f.h, g.h) * 1.3);
+      if (w) { const v = valida(w.t); if (v) return v; }
+    }
+    return "";
+  }
+
+  function buscarCodigos(filas, re, arreglar) {
+    const out = [];
+    for (const a of apariciones(filas, re)) {
+      const der = valorALaDerecha(filas[a.fi], a);
+      const valida = t => { const v = arreglar(limpiarCodigo(t)); return esCodigo(v) ? v : ""; };
+      const v = (der.length && valida(der[0])) || valorDebajo(filas, a, valida);
+      if (v && !out.includes(v)) out.push(v);
     }
     return out;
   }
 
   function cortarNombre(valor) {
-    const base = quitarAcentos(valor.toLowerCase());
+    const base = plano(valor);
     let corte = valor.length;
-    for (const palabra of CORTE_NOMBRE) {
-      const m = new RegExp("(^|\\s)" + escapar(quitarAcentos(palabra.toLowerCase()))).exec(base);
+    for (const p of CORTE_NOMBRE) {
+      const m = new RegExp("(^|\\s)" + escapar(plano(p)) + "(?![a-z])").exec(base);
       if (m && m.index > 0) corte = Math.min(corte, m.index);
     }
-    const g = /\s{3,}/.exec(valor); // un espacio grande suele separar columnas
-    if (g) corte = Math.min(corte, g.index);
-    return valor.slice(0, corte).replace(/^[\s:\-,]+|[\s:\-,]+$/g, "");
+    let v = valor.slice(0, corte).trim();
+    // Quita la cédula o RUC del inicio: "4-827-13 CESAR..." -> "CESAR..."
+    v = v.replace(/^(?:[A-Z]{0,3}-?\d[\w-]*\s+)+/i, "");
+    return v.replace(/^[\s:\-,]+|[\s:\-,]+$/g, "");
   }
 
-  function buscarCliente(texto) {
-    const lineas = texto.split("\n");
-    const inicio = new RegExp("^\\s*" + ET_CLIENTE + "(?![a-z0-9])\\s*[:.\\-]?\\s*(.*)$", "i");
-    const enLinea = new RegExp("\\b" + ET_CLIENTE + "\\s*:\\s*(.*)$", "i");
-    for (let i = 0; i < lineas.length; i++) {
-      const l = quitarAcentos(lineas[i]);
-      const m = inicio.exec(l) || enLinea.exec(l);
-      if (!m) continue;
-      const desde = m.index + m[0].length - m[1].length;
-      let valor = lineas[i].slice(desde).trim();
-      if (!valor && i + 1 < lineas.length) valor = lineas[i + 1].trim(); // nombre en la línea siguiente
-      valor = cortarNombre(valor);
-      if (valor.length >= 3 && /[A-Za-zÁÉÍÓÚÑáéíóúñ]{2}/.test(valor)) return valor;
+  function buscarCliente(filas) {
+    for (const re of RE.cliente) {
+      for (const a of apariciones(filas, re)) {
+        let partes = valorALaDerecha(filas[a.fi], a);
+        if (!partes.length) {
+          const f = filas[a.fi], g = filas[a.fi + 1];
+          if (g && g.c - f.c < f.h * 3) partes = g.words.filter(w => w.x0 >= f.words[a.i].x0 - f.h).map(w => w.t);
+        }
+        const v = cortarNombre(partes.join(" "));
+        if (v.length >= 3 && /[A-Za-zÁÉÍÓÚÑáéíóúñ]{2}/.test(v)) return v;
+      }
     }
     return "";
   }
 
-  /* Devuelve una fila por vehículo: {cliente, poliza, chasis, motor, nota} */
-  function extraer(texto) {
-    if (texto.replace(/\s/g, "").length < 30) {
-      return [{ cliente: "", poliza: "", chasis: "", motor: "", nota: "El PDF no tiene texto (¿es un escaneo?)" }];
-    }
-    const notas = [];
-    const cliente = buscarCliente(texto);
+  // El VIN nunca lleva I, O ni Q: si el OCR las leyó, son 1, 0 y 0
+  const arreglarVin = v => v.length === 17 ? v.replace(/O/g, "0").replace(/Q/g, "0").replace(/I/g, "1") : v;
 
-    let chasis = buscarCodigos(texto, ET_CHASIS);
+  /* Devuelve una fila por vehículo: {cliente, poliza, chasis, motor, nota} */
+  function extraer(filas, nombreArchivo) {
+    const texto = filas.map(f => f.texto).join("\n");
+    const notas = [];
+    let cliente = buscarCliente(filas);
+    // El OCR a veces pierde la Ñ: si el nombre del archivo trae la palabra con Ñ, se usa esa
+    const delArchivo = (nombreArchivo || "").replace(/\.[a-z0-9]+$/i, "").split(/[^A-Za-zÁÉÍÓÚÑáéíóúñ]+/).filter(Boolean);
+    if (cliente && delArchivo.length) {
+      const sinN = t => plano(t).replace(/ñ/g, "n");
+      cliente = cliente.split(" ").map(p => {
+        const igual = delArchivo.find(a => /ñ/i.test(a) && sinN(a) === sinN(p));
+        return igual ? (p === p.toUpperCase() ? igual.toUpperCase() : igual) : p;
+      }).join(" ");
+    }
+
+    let polizas = buscarCodigos(filas, RE.poliza[0], v => v).filter(p => FORMATO_POLIZA.test(p) || /\d{4,}/.test(p));
+    if (!polizas.length) {
+      const m = texto.match(FORMATO_POLIZA);
+      if (m) { polizas = [m[0]]; notas.push("Póliza tomada por formato"); }
+    }
+    const enNombre = (nombreArchivo || "").match(FORMATO_POLIZA);
+    if (!polizas.length && enNombre) { polizas = [enNombre[0]]; notas.push("Póliza tomada del nombre del archivo"); }
+    else if (enNombre && polizas[0] && polizas[0] !== enNombre[0]) notas.push("La póliza no coincide con el nombre del archivo");
+
+    let chasis = buscarCodigos(filas, RE.chasis[0], arreglarVin);
     if (!chasis.length) {
-      const vins = (texto.toUpperCase().match(VIN_RE) || []).filter(v => /\d/.test(v) && /[A-Z]/.test(v));
+      const vins = (texto.toUpperCase().match(/\b[A-Z0-9]{17}\b/g) || [])
+        .map(arreglarVin).filter(v => /\d/.test(v) && /[A-Z]/.test(v) && !/[IOQ]/.test(v));
       chasis = [...new Set(vins)];
       if (chasis.length) notas.push("Chasis tomado por formato VIN");
     }
-    const motores = buscarCodigos(texto, ET_MOTOR).filter(m => !chasis.includes(m));
-
-    let polizas = buscarCodigos(texto, ET_POLIZA).filter(p => !chasis.includes(p) && !motores.includes(p));
-    if (!polizas.length) {
-      polizas = [...new Set(texto.match(FORMATO_POLIZA) || [])];
-      if (polizas.length) notas.push("Póliza tomada por formato");
-    }
+    const motores = buscarCodigos(filas, RE.motor[0], v => v).filter(m => !chasis.includes(m) && !polizas.includes(m));
 
     const n = Math.max(chasis.length, motores.length, 1);
-    if (n > 1) notas.push(n + " vehículos en la proforma");
-    if (chasis.length && motores.length && chasis.length !== motores.length)
-      notas.push("Distinta cantidad de chasis y motores: revisar");
+    if (n > 1) notas.push(n + " vehículos en el documento");
+    if (chasis.length && motores.length && chasis.length !== motores.length) notas.push("Distinta cantidad de chasis y motores: revisar");
 
-    const filas = [];
+    const out = [];
     for (let i = 0; i < n; i++) {
-      // Si hay una póliza por vehículo se emparejan; si no, todas las filas llevan la primera
-      const poliza = polizas.length === n ? polizas[i] : (polizas[0] || "");
-      filas.push({ cliente, poliza, chasis: chasis[i] || "", motor: motores[i] || "", nota: notas.join("; ") });
+      out.push({ cliente, poliza: polizas.length === n ? polizas[i] : (polizas[0] || ""),
+                 chasis: chasis[i] || "", motor: motores[i] || "", nota: notas.join("; ") });
     }
-    return filas;
+    return out;
   }
 
-  /* Convierte el PDF en texto, línea por línea, respetando el orden visual */
-  async function leerTextoPDF(pdfjs, data) {
-    const pdf = await pdfjs.getDocument({ data }).promise;
-    const paginas = [];
-    try {
-      for (let p = 1; p <= pdf.numPages; p++) {
-        const page = await pdf.getPage(p);
-        const { items } = await page.getTextContent();
-        const piezas = items
-          .filter(it => typeof it.str === "string" && it.str.length)
-          .map(it => ({
-            s: it.str, x: it.transform[4], y: it.transform[5], w: it.width,
-            h: Math.abs(it.transform[3]) || it.height || 10,
-          }))
-          .sort((a, b) => b.y - a.y || a.x - b.x);
-        const lineas = [];
-        for (const pz of piezas) {
-          const l = lineas.find(L => Math.abs(L.y - pz.y) <= Math.max(2, pz.h * 0.5));
-          if (l) l.items.push(pz); else lineas.push({ y: pz.y, items: [pz] });
-        }
-        lineas.sort((a, b) => b.y - a.y);
-        const texto = lineas.map(L => {
-          L.items.sort((a, b) => a.x - b.x);
-          let out = "", fin = null;
-          for (const it of L.items) {
-            // pdf.js representa los huecos entre textos como piezas de solo espacios
-            if (!it.s.trim()) {
-              if (it.w > it.h * 1.5) { out = out.replace(/\s+$/, "") + "   "; }
-              else if (!out.endsWith(" ")) out += " ";
-              fin = it.x + it.w;
-              continue;
-            }
-            if (fin !== null) {
-              const hueco = it.x - fin;
-              if (hueco > it.h * 1.5) out += "   ";          // columna distinta
-              else if (hueco > it.h * 0.15 && !out.endsWith(" ") && !it.s.startsWith(" ")) out += " ";
-            }
-            out += it.s;
-            fin = it.x + it.w;
-          }
-          return out.replace(/\s+$/, "");
-        }).join("\n");
-        paginas.push(texto);
-        page.cleanup();
-      }
-    } finally {
-      pdf.destroy();
-    }
-    return paginas.join("\n");
-  }
+  const completo = r => r.every(x => x.cliente && x.poliza && x.chasis && x.motor);
 
-  const api = { extraer, leerTextoPDF };
+  const api = { agruparFilas, palabrasDePdf, palabrasDeOcr, textoDeFilas, extraer, completo };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else global.Extractor = api;
 })(this);

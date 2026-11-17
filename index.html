@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Extractor de proformas | Movinsa</title>
+<title>Extractor de pólizas | Movinsa</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script src="extractor.js"></script>
 <style>
 :root{
@@ -73,7 +74,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 .search{font:inherit;flex:1 1 260px;max-width:420px;padding:9px 12px;border:1.5px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink)}
 .check{display:flex;gap:6px;align-items:center;font-size:.92rem;cursor:pointer}
 .scroller{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px}
-table{border-collapse:collapse;width:100%;min-width:1060px;font-size:.92rem}
+table{border-collapse:collapse;width:100%;min-width:1120px;font-size:.92rem}
 th{text-align:left;font-weight:650;font-stretch:90%;padding:12px 10px;border-bottom:2px solid var(--ink);white-space:nowrap}
 td{border-bottom:1px solid var(--line);padding:3px 4px;vertical-align:middle}
 tr:last-child td{border-bottom:0}
@@ -81,8 +82,8 @@ td.file{padding:8px 10px;color:var(--steel);font-size:.82rem;max-width:180px;ove
 td.note{padding:8px 10px;color:var(--steel);font-size:.82rem;min-width:140px}
 .cell{width:100%;font:inherit;color:var(--ink);background:transparent;border:1px solid transparent;border-radius:3px;padding:7px 6px;min-width:120px}
 .cell:hover{border-color:var(--line)}
-.cell.code{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-size:.86rem;color:var(--code);letter-spacing:.02em;min-width:190px}
-.cell.wide{min-width:220px}
+.cell.code{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-size:.86rem;color:var(--code);letter-spacing:.02em;min-width:165px}
+.cell.wide{min-width:280px}
 .cell.empty{background:var(--miss)}
 .cell.dup{background:var(--dup)}
 .cell::placeholder{color:var(--steel);opacity:.8}
@@ -109,19 +110,19 @@ footer{margin-top:48px;font-size:.85rem;color:var(--steel)}
 <body>
 <div class="wrap">
   <p class="brand">Movinsa</p>
-  <h1>Extractor de proformas</h1>
-  <p class="lead">Sube las proformas en PDF y obtén el nombre del cliente, el número de póliza, el número de chasis y el número de motor en una tabla que puedes revisar y descargar en Excel. <strong>Los archivos se leen en tu computadora y no se envían a ningún servidor.</strong></p>
+  <h1>Extractor de pólizas</h1>
+  <p class="lead">Sube las pólizas en PDF o imagen y obtén el nombre del asegurado, el número de póliza, el número de chasis y el número de motor en una tabla que puedes revisar y descargar en Excel. <strong>Los archivos se leen en tu computadora y no se envían a ningún servidor.</strong></p>
 
   <div class="tray" id="tray">
     <div class="tray-text">
-      <strong>Arrastra las proformas o carpetas aquí</strong>
-      <span>Solo PDF digitales. Las proformas que ya se leyeron se omiten.</span>
+      <strong>Arrastra las pólizas o carpetas aquí</strong>
+      <span>PDF, JPG o PNG. Las pólizas que ya se leyeron se omiten.</span>
     </div>
     <div class="tray-btns">
       <button class="btn primary" id="pickFiles">Elegir archivos</button>
       <button class="btn" id="pickFolder">Elegir carpeta</button>
     </div>
-    <input type="file" id="fileInput" multiple accept="application/pdf,.pdf">
+    <input type="file" id="fileInput" multiple accept="application/pdf,.pdf,image/png,image/jpeg">
     <input type="file" id="folderInput" webkitdirectory multiple>
   </div>
   <div class="notice" id="notice" role="status"></div>
@@ -143,13 +144,13 @@ footer{margin-top:48px;font-size:.85rem;color:var(--steel)}
       </div>
     </div>
     <div class="toolbar">
-      <input class="search" id="search" type="search" placeholder="Buscar cliente, póliza, chasis o motor…" aria-label="Buscar en la tabla">
+      <input class="search" id="search" type="search" placeholder="Buscar asegurado, póliza, chasis o motor…" aria-label="Buscar en la tabla">
       <label class="check"><input type="checkbox" id="onlyMissing"> Solo incompletos</label>
       <label class="check"><input type="checkbox" id="onlyDup"> Solo duplicados</label>
     </div>
     <div class="scroller">
       <table>
-        <thead><tr><th>Archivo</th><th>Cliente</th><th>Póliza</th><th>Chasis</th><th>Motor</th><th>Nota</th><th></th></tr></thead>
+        <thead><tr><th>Archivo</th><th>Asegurado</th><th>Póliza</th><th>Chasis</th><th>Motor</th><th>Nota</th><th></th></tr></thead>
         <tbody id="body"></tbody>
       </table>
     </div>
@@ -166,16 +167,16 @@ footer{margin-top:48px;font-size:.85rem;color:var(--steel)}
 <dialog id="dlg">
   <div class="dlg-head"><h3 id="dlgTitle"></h3><button class="btn small" id="dlgClose">Cerrar</button></div>
   <pre id="dlgText"></pre>
-  <div class="dlg-foot">Este es el texto que el programa leyó del PDF. Si un dato no salió, revisa con qué palabra aparece y agrégala a las etiquetas en extractor.js.</div>
+  <div class="dlg-foot">Este es el texto que el programa leyó del documento. Si un dato no salió, revisa con qué palabra aparece y agrégala a las etiquetas en extractor.js.</div>
 </dialog>
 
 <script>
 (function(){
-  const STORE = "movinsa-proformas-v1";
+  const STORE = "movinsa-polizas-v1";
   const PAGE = 50;
   const $ = id => document.getElementById(id);
   const FIELDS = [
-    {k:"cliente", label:"Cliente", wide:true},
+    {k:"cliente", label:"Asegurado", wide:true},
     {k:"poliza", label:"Póliza", code:true},
     {k:"chasis", label:"Chasis", code:true, dup:true},
     {k:"motor", label:"Motor", code:true, dup:true}
@@ -187,7 +188,7 @@ footer{margin-top:48px;font-size:.85rem;color:var(--steel)}
   let page = 0, working = false;
   const queue = [];
 
-  if (!window.pdfjsLib || !window.Extractor){
+  if (!window.pdfjsLib || !window.Extractor || !window.Tesseract){
     notice("No se pudieron cargar los componentes de la página. Revisa tu conexión a internet y recarga.");
   } else {
     pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -231,7 +232,7 @@ footer{margin-top:48px;font-size:.85rem;color:var(--steel)}
     if (!slice.length){
       const tr=document.createElement("tr"), td=document.createElement("td");
       td.colSpan=7; td.className="empty-state";
-      td.textContent = rows.length ? "Ningún registro coincide con el filtro." : "Sube proformas para empezar. Cada vehículo encontrado aparece aquí como una fila.";
+      td.textContent = rows.length ? "Ningún registro coincide con el filtro." : "Sube pólizas para empezar. Cada vehículo encontrado aparece aquí como una fila.";
       tr.append(td); body.append(tr);
     }
     const frag=document.createDocumentFragment();
@@ -287,56 +288,121 @@ footer{margin-top:48px;font-size:.85rem;color:var(--steel)}
 
   /* ---------- Lectura ---------- */
   function agregar(lista){
-    if (!window.pdfjsLib || !window.Extractor) return;
+    if (!window.pdfjsLib || !window.Extractor || !window.Tesseract) return;
     const conocidas=new Set(rows.map(r=>r.fileKey));
     queue.forEach(f=>conocidas.add(keyOf(f)));
     let nuevas=0, repetidas=0, otras=0;
     for (const f of lista){
-      if (!(f.type==="application/pdf" || /\.pdf$/i.test(f.name))){ otras++; continue; }
+      if (!(esPdf(f) || esImagen(f))){ otras++; continue; }
       const k=keyOf(f);
       if (conocidas.has(k)){ repetidas++; continue; }
       conocidas.add(k); queue.push(f); nuevas++;
     }
     const partes=[];
     if (repetidas) partes.push(`${n(repetidas)} ya se habían leído y se omitieron`);
-    if (otras) partes.push(`${n(otras)} no son PDF y se ignoraron`);
+    if (otras) partes.push(`${n(otras)} no son PDF ni imagen y se ignoraron`);
     notice(partes.length ? partes.join("; ")+"." : "");
     if (nuevas) procesar();
+  }
+
+  const esPdf = f => f.type==="application/pdf" || /\.pdf$/i.test(f.name);
+  const esImagen = f => /^image\/(png|jpe?g)$/.test(f.type) || /\.(png|jpe?g)$/i.test(f.name);
+
+  /* Lector de imágenes (OCR). Se prepara la primera vez que hace falta. */
+  let ocr = null;
+  function lectorOcr(){
+    if (!ocr){
+      const cuantos = Math.min(2, Math.max(1, (navigator.hardwareConcurrency||2) >> 1));
+      ocr = (async ()=>{
+        const sch = Tesseract.createScheduler();
+        for (let i=0;i<cuantos;i++) sch.addWorker(await Tesseract.createWorker("spa"));
+        return sch;
+      })();
+      ocr.catch(()=>{ ocr=null; });
+    }
+    return ocr;
+  }
+  async function leerImagen(fuente, top){
+    const sch = await lectorOcr();
+    const { data } = await sch.addJob("recognize", fuente);
+    return Extractor.palabrasDeOcr(data.words || [], top);
+  }
+
+  async function leerDocumento(f){
+    if (esImagen(f)){
+      const filas = Extractor.agruparFilas(await leerImagen(f, 0));
+      return { filas, ocr:true };
+    }
+    const pdf = await pdfjsLib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
+    try{
+      let words=[], top=0, letras=0;
+      for (let p=1;p<=pdf.numPages;p++){
+        const pg=await pdf.getPage(p), vp=pg.getViewport({scale:1});
+        const { items } = await pg.getTextContent();
+        items.forEach(it=>{ letras += (it.str||"").replace(/\s/g,"").length; });
+        words = words.concat(Extractor.palabrasDePdf(items, top+vp.height));
+        top += vp.height + 40;
+        pg.cleanup();
+      }
+      if (letras >= 80) return { filas: Extractor.agruparFilas(words) };
+
+      // PDF sin texto (imagen): se lee con OCR página por página, hasta tener los cuatro datos
+      words=[]; top=0;
+      let filas=[];
+      for (let p=1;p<=Math.min(pdf.numPages,3);p++){
+        const pg=await pdf.getPage(p), vp1=pg.getViewport({scale:1});
+        const vp=pg.getViewport({scale:Math.min(4, 2400/vp1.width)});
+        const cv=document.createElement("canvas"); cv.width=Math.round(vp.width); cv.height=Math.round(vp.height);
+        const ctx=cv.getContext("2d"); ctx.fillStyle="#fff"; ctx.fillRect(0,0,cv.width,cv.height);
+        await pg.render({canvasContext:ctx, viewport:vp}).promise;
+        words = words.concat(await leerImagen(cv, top));
+        top += cv.height + 100;
+        cv.width=cv.height=0; pg.cleanup();
+        filas = Extractor.agruparFilas(words);
+        if (Extractor.completo(Extractor.extraer(filas, f.name))) break;
+      }
+      return { filas, ocr:true };
+    } finally { pdf.destroy(); }
   }
 
   async function procesar(){
     if (working) return;
     working=true;
-    let hechas=0, errores=0, total=queue.length;
+    let hechas=0, errores=0, total=queue.length, enCurso=0;
     $("progress").classList.add("show");
-    while (queue.length){
-      total = Math.max(total, hechas+queue.length);
-      const f=queue.shift();
-      const nombre=f.webkitRelativePath||f.name;
-      $("progressText").innerHTML=`Leyendo <b>${n(hechas+1)}</b> de ${n(total)}`;
+    const pintar=()=>{
+      total=Math.max(total, hechas+enCurso+queue.length);
+      $("progressText").innerHTML = ocr && !hechas && enCurso ? "Preparando el lector de imágenes. La primera vez tarda un poco…" : `Leyendo <b>${n(Math.min(total,hechas+1))}</b> de ${n(total)}`;
       $("bar").style.width=(hechas/total*100)+"%";
-      const docId=uid(), fk=keyOf(f);
+    };
+    async function uno(f){
+      const nombre=f.webkitRelativePath||f.name, docId=uid(), fk=keyOf(f);
       try{
-        const texto=await Extractor.leerTextoPDF(pdfjsLib, new Uint8Array(await f.arrayBuffer()));
-        textos.set(docId, texto);
-        Extractor.extraer(texto).forEach(e=>rows.push({id:uid(), docId, fileKey:fk, archivo:nombre, ...e}));
+        const r=await leerDocumento(f);
+        textos.set(docId, Extractor.textoDeFilas(r.filas));
+        Extractor.extraer(r.filas, f.name).forEach(e=>rows.push({id:uid(), docId, fileKey:fk, archivo:nombre, ...e}));
       }catch(err){
         errores++;
-        rows.push({id:uid(), docId, fileKey:fk, archivo:nombre, cliente:"", poliza:"", chasis:"", motor:"", nota:"No se pudo abrir el PDF (¿está dañado o protegido?)"});
+        rows.push({id:uid(), docId, fileKey:fk, archivo:nombre, cliente:"", poliza:"", chasis:"", motor:"",
+          nota: ocr===null && !esPdf(f) ? "No se pudo cargar el lector de imágenes" : "No se pudo abrir el archivo (¿está dañado o protegido?)"});
       }
       hechas++;
-      if (hechas%20===0){ save(); render(); }
+      if (hechas%10===0){ save(); render(); }
     }
+    // Dos documentos a la vez
+    await Promise.all([0,1].map(async ()=>{
+      while (queue.length){ const f=queue.shift(); enCurso++; pintar(); await uno(f); enCurso--; pintar(); }
+    }));
     save(); render();
     $("bar").style.width="100%";
-    $("progressText").innerHTML=`Listo: <b>${n(hechas)}</b> ${hechas===1?"proforma leída":"proformas leídas"}${errores?`, ${n(errores)} no se pudieron abrir`:""}.`;
+    $("progressText").innerHTML=`Listo: <b>${n(hechas)}</b> ${hechas===1?"documento leído":"documentos leídos"}${errores?`, ${n(errores)} no se pudieron abrir`:""}.`;
     working=false;
   }
 
   /* ---------- Exportar ---------- */
   function matriz(){
     contar();
-    return [["Archivo","Cliente","Póliza","Chasis","Motor","Incompleto","Duplicado","Nota"],
+    return [["Archivo","Asegurado","Póliza","Chasis","Motor","Incompleto","Duplicado","Nota"],
       ...rows.map(r=>[r.archivo,r.cliente||"",r.poliza||"",r.chasis||"",r.motor||"",incompleta(r)?"Sí":"",filaDup(r)?"Sí":"",r.nota||""])];
   }
   const fecha=()=>new Date().toISOString().slice(0,10);
@@ -344,15 +410,15 @@ footer{margin-top:48px;font-size:.85rem;color:var(--steel)}
     const ws=XLSX.utils.aoa_to_sheet(matriz());
     ws["!cols"]=[{wch:34},{wch:38},{wch:20},{wch:24},{wch:22},{wch:11},{wch:11},{wch:36}];
     ws["!autofilter"]={ref:ws["!ref"]};
-    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Proformas");
-    XLSX.writeFile(wb,`proformas-${fecha()}.xlsx`);
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Pólizas");
+    XLSX.writeFile(wb,`polizas-${fecha()}.xlsx`);
   };
   $("csvBtn").onclick=()=>{
     const esc=v=>/[",\n;]/.test(v)?'"'+String(v).replace(/"/g,'""')+'"':v;
     const csv="\ufeff"+matriz().map(r=>r.map(esc).join(",")).join("\r\n");
     const a=document.createElement("a");
     a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-    a.download=`proformas-${fecha()}.csv`; a.click();
+    a.download=`polizas-${fecha()}.csv`; a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href),2000);
   };
   $("clearBtn").onclick=()=>{
