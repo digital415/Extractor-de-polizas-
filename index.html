@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Extractor de proformas | Movinsa</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="extractor.js"></script>
+<style>
+:root{
+  --paper:#EEF1F4; --surface:#FFFFFF; --ink:#14213D; --steel:#5B6B82; --line:#D3DAE3;
+  --signal:#F2C230; --ok:#2E7D5B; --bad:#B3261E; --miss:#FFF4CC; --dup:#FDE2DF; --code:#0F2A5C;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0E1524; --surface:#162038; --ink:#E6ECF5; --steel:#9AA8BE; --line:#2A3755;
+    --signal:#F2C230; --ok:#5CC39A; --bad:#FF8A80; --miss:#3A3212; --dup:#4A1F1F; --code:#BFD3FF;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0E1524; --surface:#162038; --ink:#E6ECF5; --steel:#9AA8BE; --line:#2A3755;
+  --signal:#F2C230; --ok:#5CC39A; --bad:#FF8A80; --miss:#3A3212; --dup:#4A1F1F; --code:#BFD3FF;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:"Archivo",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.5}
+.wrap{max-width:1100px;margin:0 auto;padding:36px 20px 64px}
+.brand{font-stretch:85%;font-weight:700;color:var(--steel);margin:0 0 18px;font-size:1rem}
+h1{font-stretch:78%;font-weight:800;font-size:clamp(2.2rem,6vw,3.6rem);line-height:1;letter-spacing:-0.01em;margin:0 0 12px}
+.lead{margin:0;color:var(--steel);max-width:60ch}
+.lead strong{color:var(--ink);font-weight:600}
+
+.tray{margin-top:30px;background:var(--surface);border:2px dashed var(--line);border-left:10px solid var(--signal);border-radius:6px;padding:30px 26px;display:flex;gap:16px 24px;align-items:center;flex-wrap:wrap;transition:border-color .15s,background .15s}
+.tray.over{border-color:var(--signal);background:color-mix(in srgb,var(--signal) 10%,var(--surface))}
+.tray-text{flex:1 1 280px}
+.tray-text strong{display:block;font-size:1.25rem;font-stretch:90%;font-weight:700}
+.tray-text span{color:var(--steel);font-size:.95rem}
+.tray-btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{font:inherit;font-weight:600;cursor:pointer;border-radius:4px;padding:10px 18px;border:1.5px solid var(--ink);background:transparent;color:var(--ink)}
+.btn.primary{background:var(--ink);color:var(--paper)}
+.btn.small{padding:6px 12px;font-size:.88rem}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn:focus-visible,.cell:focus-visible,.icon:focus-visible,.search:focus-visible{outline:3px solid var(--signal);outline-offset:2px}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+
+.notice{margin-top:14px;padding:12px 16px;border-radius:4px;background:var(--miss);display:none}
+.notice.show{display:block}
+.progress{margin-top:16px;display:none}
+.progress.show{display:block}
+.progress-text{font-size:.95rem;color:var(--steel)}
+.progress-text b{color:var(--ink)}
+.bar{height:8px;background:var(--line);border-radius:4px;margin-top:8px;overflow:hidden}
+.bar>div{height:100%;width:0;background:var(--signal);transition:width .2s}
+@media (prefers-reduced-motion: reduce){.tray,.bar>div{transition:none}}
+
+.results{margin-top:44px}
+.results-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.results-head h2{margin:0;font-stretch:85%;font-weight:750;font-size:1.6rem}
+.results-head p{margin:2px 0 0;color:var(--steel);font-size:.9rem}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.toolbar{display:flex;gap:12px 20px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.search{font:inherit;flex:1 1 260px;max-width:420px;padding:9px 12px;border:1.5px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink)}
+.check{display:flex;gap:6px;align-items:center;font-size:.92rem;cursor:pointer}
+.scroller{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;min-width:860px;font-size:.92rem}
+th{text-align:left;font-weight:650;font-stretch:90%;padding:12px 10px;border-bottom:2px solid var(--ink);white-space:nowrap}
+td{border-bottom:1px solid var(--line);padding:3px 4px;vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.file{padding:8px 10px;color:var(--steel);font-size:.82rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+td.note{padding:8px 10px;color:var(--steel);font-size:.82rem;min-width:140px}
+.cell{width:100%;font:inherit;color:var(--ink);background:transparent;border:1px solid transparent;border-radius:3px;padding:7px 6px;min-width:120px}
+.cell:hover{border-color:var(--line)}
+.cell.code{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-size:.86rem;color:var(--code);letter-spacing:.02em;min-width:190px}
+.cell.wide{min-width:220px}
+.cell.empty{background:var(--miss)}
+.cell.dup{background:var(--dup)}
+.cell::placeholder{color:var(--steel);opacity:.8}
+td.tools{white-space:nowrap;width:84px;text-align:right}
+.icon{background:none;border:0;color:var(--steel);cursor:pointer;font:inherit;font-size:.82rem;padding:6px 6px;border-radius:3px;text-decoration:underline}
+.icon.x{text-decoration:none;font-size:1.1rem}
+.icon:hover{color:var(--ink)} .icon.x:hover{color:var(--bad)}
+.empty-state{padding:40px 20px;text-align:center;color:var(--steel)}
+.pager{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px;font-size:.9rem;color:var(--steel)}
+.pager div{display:flex;gap:8px}
+.legend{margin-top:14px;font-size:.85rem;color:var(--steel);display:flex;flex-wrap:wrap;gap:8px 20px}
+.legend span{display:flex;align-items:center;gap:8px}
+.swatch{width:14px;height:14px;border-radius:2px;border:1px solid var(--line);display:inline-block}
+
+dialog{border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);max-width:min(800px,94vw);width:100%;padding:0}
+dialog::backdrop{background:rgba(14,21,36,.55)}
+.dlg-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.dlg-head h3{margin:0;font-stretch:90%;font-size:1.1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+dialog pre{margin:0;padding:16px 18px;max-height:65vh;overflow:auto;font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-size:.82rem;white-space:pre}
+.dlg-foot{padding:12px 18px;border-top:1px solid var(--line);font-size:.85rem;color:var(--steel)}
+footer{margin-top:48px;font-size:.85rem;color:var(--steel)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="brand">Movinsa</p>
+  <h1>Extractor de proformas</h1>
+  <p class="lead">Sube las proformas en PDF y obtén el nombre del cliente, el número de chasis y el número de motor en una tabla que puedes revisar y descargar en Excel. <strong>Los archivos se leen en tu computadora y no se envían a ningún servidor.</strong></p>
+
+  <div class="tray" id="tray">
+    <div class="tray-text">
+      <strong>Arrastra las proformas o carpetas aquí</strong>
+      <span>Solo PDF digitales. Las proformas que ya se leyeron se omiten.</span>
+    </div>
+    <div class="tray-btns">
+      <button class="btn primary" id="pickFiles">Elegir archivos</button>
+      <button class="btn" id="pickFolder">Elegir carpeta</button>
+    </div>
+    <input type="file" id="fileInput" multiple accept="application/pdf,.pdf">
+    <input type="file" id="folderInput" webkitdirectory multiple>
+  </div>
+  <div class="notice" id="notice" role="status"></div>
+  <div class="progress" id="progress" aria-live="polite">
+    <div class="progress-text" id="progressText"></div>
+    <div class="bar"><div id="bar"></div></div>
+  </div>
+
+  <section class="results">
+    <div class="results-head">
+      <div>
+        <h2>Datos extraídos</h2>
+        <p id="count">Aún no hay registros.</p>
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="xlsxBtn" disabled>Descargar Excel</button>
+        <button class="btn" id="csvBtn" disabled>Descargar CSV</button>
+        <button class="btn" id="clearBtn" disabled>Vaciar tabla</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <input class="search" id="search" type="search" placeholder="Buscar cliente, chasis o motor…" aria-label="Buscar en la tabla">
+      <label class="check"><input type="checkbox" id="onlyMissing"> Solo incompletos</label>
+      <label class="check"><input type="checkbox" id="onlyDup"> Solo duplicados</label>
+    </div>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>Archivo</th><th>Cliente</th><th>Chasis</th><th>Motor</th><th>Nota</th><th></th></tr></thead>
+        <tbody id="body"></tbody>
+      </table>
+    </div>
+    <div class="pager" id="pager"></div>
+    <div class="legend">
+      <span><i class="swatch" style="background:var(--miss)"></i>Dato no encontrado; haz clic en la celda para escribirlo</span>
+      <span><i class="swatch" style="background:var(--dup)"></i>Chasis o motor repetido en otra fila</span>
+    </div>
+  </section>
+
+  <footer>La tabla se guarda en este navegador hasta que la vacíes. Descarga el Excel para conservar una copia.</footer>
+</div>
+
+<dialog id="dlg">
+  <div class="dlg-head"><h3 id="dlgTitle"></h3><button class="btn small" id="dlgClose">Cerrar</button></div>
+  <pre id="dlgText"></pre>
+  <div class="dlg-foot">Este es el texto que el programa leyó del PDF. Si un dato no salió, revisa con qué palabra aparece y agrégala a las etiquetas en extractor.js.</div>
+</dialog>
+
+<script>
+(function(){
+  const STORE = "movinsa-proformas-v1";
+  const PAGE = 50;
+  const $ = id => document.getElementById(id);
+  const FIELDS = [
+    {k:"cliente", label:"Cliente", wide:true},
+    {k:"chasis", label:"Chasis", code:true},
+    {k:"motor", label:"Motor", code:true}
+  ];
+
+  let rows = [];
+  try { rows = JSON.parse(localStorage.getItem(STORE) || "[]") || []; } catch(e){ rows = []; }
+  const textos = new Map();   // texto leído de cada PDF (solo en esta sesión)
+  let page = 0, working = false;
+  const queue = [];
+
+  if (!window.pdfjsLib || !window.Extractor){
+    notice("No se pudieron cargar los componentes de la página. Revisa tu conexión a internet y recarga.");
+  } else {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+
+  function save(){ try { localStorage.setItem(STORE, JSON.stringify(rows)); } catch(e){ notice("El navegador no tiene espacio para guardar la tabla. Descarga el Excel para no perder los datos."); } }
+  function notice(msg){ const n=$("notice"); n.textContent=msg||""; n.classList.toggle("show",!!msg); }
+  const uid = () => Math.random().toString(36).slice(2,10);
+  const norm = v => String(v||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+  const keyOf = f => (f.webkitRelativePath||f.name) + "|" + f.size + "|" + f.lastModified;
+  const n = v => v.toLocaleString("es");
+
+  /* ---------- Duplicados e incompletos ---------- */
+  let cuenta = {chasis:new Map(), motor:new Map()};
+  function contar(){
+    cuenta = {chasis:new Map(), motor:new Map()};
+    rows.forEach(r=>["chasis","motor"].forEach(k=>{ const v=norm(r[k]); if(v.length>3) cuenta[k].set(v,(cuenta[k].get(v)||0)+1); }));
+  }
+  const esDup = (r,k) => { const v=norm(r[k]); return v.length>3 && (cuenta[k].get(v)||0)>1; };
+  const filaDup = r => esDup(r,"chasis") || esDup(r,"motor");
+  const incompleta = r => FIELDS.some(f=>!String(r[f.k]||"").trim());
+
+  /* ---------- Tabla ---------- */
+  function filtradas(){
+    const q = norm($("search").value), om=$("onlyMissing").checked, od=$("onlyDup").checked;
+    return rows.filter(r=>{
+      if (om && !incompleta(r)) return false;
+      if (od && !filaDup(r)) return false;
+      if (q && !norm(r.archivo+" "+r.cliente+" "+r.chasis+" "+r.motor).includes(q)) return false;
+      return true;
+    });
+  }
+
+  function render(){
+    contar();
+    const list = filtradas();
+    const pages = Math.max(1, Math.ceil(list.length/PAGE));
+    if (page>=pages) page=pages-1;
+    const body=$("body"); body.textContent="";
+    const slice=list.slice(page*PAGE, page*PAGE+PAGE);
+    if (!slice.length){
+      const tr=document.createElement("tr"), td=document.createElement("td");
+      td.colSpan=6; td.className="empty-state";
+      td.textContent = rows.length ? "Ningún registro coincide con el filtro." : "Sube proformas para empezar. Cada vehículo encontrado aparece aquí como una fila.";
+      tr.append(td); body.append(tr);
+    }
+    const frag=document.createDocumentFragment();
+    slice.forEach(r=>{
+      const tr=document.createElement("tr");
+      const tf=document.createElement("td"); tf.className="file"; tf.textContent=r.archivo; tf.title=r.archivo; tr.append(tf);
+      FIELDS.forEach(f=>{
+        const td=document.createElement("td"), inp=document.createElement("input");
+        inp.className="cell"+(f.code?" code":"")+(f.wide?" wide":"");
+        inp.value=r[f.k]||""; inp.placeholder="—";
+        inp.setAttribute("aria-label", f.label+" de "+r.archivo);
+        inp.classList.toggle("empty", !inp.value.trim());
+        if (f.code && esDup(r,f.k)){ inp.classList.add("dup"); inp.title="Este "+f.label.toLowerCase()+" aparece en más de una fila"; }
+        inp.addEventListener("input",()=>{ r[f.k]=inp.value; inp.classList.toggle("empty",!inp.value.trim()); });
+        inp.addEventListener("change",()=>{ save(); if (f.code) render(); else contarResumen(); });
+        td.append(inp); tr.append(td);
+      });
+      const tn=document.createElement("td"); tn.className="note"; tn.textContent=r.nota||""; tr.append(tn);
+      const tt=document.createElement("td"); tt.className="tools";
+      if (textos.has(r.docId)){
+        const v=document.createElement("button"); v.className="icon"; v.textContent="Texto";
+        v.setAttribute("aria-label","Ver el texto leído de "+r.archivo);
+        v.onclick=()=>{ $("dlgTitle").textContent=r.archivo; $("dlgText").textContent=textos.get(r.docId); $("dlg").showModal(); };
+        tt.append(v);
+      }
+      const x=document.createElement("button"); x.className="icon x"; x.textContent="×"; x.setAttribute("aria-label","Eliminar fila de "+r.archivo);
+      x.onclick=()=>{ rows=rows.filter(o=>o!==r); save(); render(); };
+      tt.append(x); tr.append(tt);
+      frag.append(tr);
+    });
+    body.append(frag);
+
+    const pg=$("pager"); pg.textContent="";
+    if (list.length>PAGE){
+      const info=document.createElement("span");
+      info.textContent=`Mostrando ${n(page*PAGE+1)} a ${n(Math.min(list.length,(page+1)*PAGE))} de ${n(list.length)}`;
+      const nav=document.createElement("div");
+      const a=document.createElement("button"); a.className="btn small"; a.textContent="Anterior"; a.disabled=page===0; a.onclick=()=>{page--;render();};
+      const b=document.createElement("button"); b.className="btn small"; b.textContent="Siguiente"; b.disabled=page>=pages-1; b.onclick=()=>{page++;render();};
+      nav.append(a,b); pg.append(info,nav);
+    }
+    contarResumen();
+  }
+  function contarResumen(){
+    const t=rows.length, inc=rows.filter(incompleta).length, d=rows.filter(filaDup).length;
+    $("count").textContent = t ? `${n(t)} ${t===1?"registro":"registros"}, ${n(inc)} incompletos, ${n(d)} con duplicado` : "Aún no hay registros.";
+    $("xlsxBtn").disabled = !t || !window.XLSX;
+    $("csvBtn").disabled = !t;
+    $("clearBtn").disabled = !t;
+  }
+  $("search").addEventListener("input",()=>{page=0;render();});
+  $("onlyMissing").onchange=$("onlyDup").onchange=()=>{page=0;render();};
+
+  /* ---------- Lectura ---------- */
+  function agregar(lista){
+    if (!window.pdfjsLib || !window.Extractor) return;
+    const conocidas=new Set(rows.map(r=>r.fileKey));
+    queue.forEach(f=>conocidas.add(keyOf(f)));
+    let nuevas=0, repetidas=0, otras=0;
+    for (const f of lista){
+      if (!(f.type==="application/pdf" || /\.pdf$/i.test(f.name))){ otras++; continue; }
+      const k=keyOf(f);
+      if (conocidas.has(k)){ repetidas++; continue; }
+      conocidas.add(k); queue.push(f); nuevas++;
+    }
+    const partes=[];
+    if (repetidas) partes.push(`${n(repetidas)} ya se habían leído y se omitieron`);
+    if (otras) partes.push(`${n(otras)} no son PDF y se ignoraron`);
+    notice(partes.length ? partes.join("; ")+"." : "");
+    if (nuevas) procesar();
+  }
+
+  async function procesar(){
+    if (working) return;
+    working=true;
+    let hechas=0, errores=0, total=queue.length;
+    $("progress").classList.add("show");
+    while (queue.length){
+      total = Math.max(total, hechas+queue.length);
+      const f=queue.shift();
+      const nombre=f.webkitRelativePath||f.name;
+      $("progressText").innerHTML=`Leyendo <b>${n(hechas+1)}</b> de ${n(total)}`;
+      $("bar").style.width=(hechas/total*100)+"%";
+      const docId=uid(), fk=keyOf(f);
+      try{
+        const texto=await Extractor.leerTextoPDF(pdfjsLib, new Uint8Array(await f.arrayBuffer()));
+        textos.set(docId, texto);
+        Extractor.extraer(texto).forEach(e=>rows.push({id:uid(), docId, fileKey:fk, archivo:nombre, ...e}));
+      }catch(err){
+        errores++;
+        rows.push({id:uid(), docId, fileKey:fk, archivo:nombre, cliente:"", chasis:"", motor:"", nota:"No se pudo abrir el PDF (¿está dañado o protegido?)"});
+      }
+      hechas++;
+      if (hechas%20===0){ save(); render(); }
+    }
+    save(); render();
+    $("bar").style.width="100%";
+    $("progressText").innerHTML=`Listo: <b>${n(hechas)}</b> ${hechas===1?"proforma leída":"proformas leídas"}${errores?`, ${n(errores)} no se pudieron abrir`:""}.`;
+    working=false;
+  }
+
+  /* ---------- Exportar ---------- */
+  function matriz(){
+    contar();
+    return [["Archivo","Cliente","Chasis","Motor","Incompleto","Duplicado","Nota"],
+      ...rows.map(r=>[r.archivo,r.cliente||"",r.chasis||"",r.motor||"",incompleta(r)?"Sí":"",filaDup(r)?"Sí":"",r.nota||""])];
+  }
+  const fecha=()=>new Date().toISOString().slice(0,10);
+  $("xlsxBtn").onclick=()=>{
+    const ws=XLSX.utils.aoa_to_sheet(matriz());
+    ws["!cols"]=[{wch:34},{wch:38},{wch:24},{wch:22},{wch:11},{wch:11},{wch:36}];
+    ws["!autofilter"]={ref:ws["!ref"]};
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Proformas");
+    XLSX.writeFile(wb,`proformas-${fecha()}.xlsx`);
+  };
+  $("csvBtn").onclick=()=>{
+    const esc=v=>/[",\n;]/.test(v)?'"'+String(v).replace(/"/g,'""')+'"':v;
+    const csv="\ufeff"+matriz().map(r=>r.map(esc).join(",")).join("\r\n");
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+    a.download=`proformas-${fecha()}.csv`; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  };
+  $("clearBtn").onclick=()=>{
+    if (!confirm("¿Borrar todos los registros? Descarga el Excel antes si quieres conservarlos.")) return;
+    rows=[]; textos.clear(); save(); $("progress").classList.remove("show"); notice(""); render();
+  };
+  $("dlgClose").onclick=()=>$("dlg").close();
+
+  /* ---------- Subida ---------- */
+  $("pickFiles").onclick=()=>$("fileInput").click();
+  $("pickFolder").onclick=()=>$("folderInput").click();
+  ["fileInput","folderInput"].forEach(id=>$(id).addEventListener("change",e=>{ agregar(Array.from(e.target.files)); e.target.value=""; }));
+
+  async function leerEntradas(entry,out){
+    if (entry.isFile) await new Promise(res=>entry.file(f=>{out.push(f);res();},res));
+    else if (entry.isDirectory){
+      const reader=entry.createReader(); let lote;
+      do { lote=await new Promise(res=>reader.readEntries(res,()=>res([]))); for (const en of lote) await leerEntradas(en,out); } while (lote.length);
+    }
+  }
+  const tray=$("tray");
+  ["dragenter","dragover"].forEach(ev=>tray.addEventListener(ev,e=>{e.preventDefault();tray.classList.add("over");}));
+  ["dragleave","drop"].forEach(ev=>tray.addEventListener(ev,e=>{e.preventDefault();tray.classList.remove("over");}));
+  tray.addEventListener("drop",async e=>{
+    const items=e.dataTransfer&&e.dataTransfer.items;
+    if (items&&items.length&&items[0].webkitGetAsEntry){
+      const entradas=Array.from(items).map(i=>i.webkitGetAsEntry()).filter(Boolean), out=[];
+      for (const en of entradas) await leerEntradas(en,out);
+      agregar(out);
+    } else if (e.dataTransfer&&e.dataTransfer.files.length) agregar(Array.from(e.dataTransfer.files));
+  });
+  window.addEventListener("beforeunload",e=>{ if (working){ e.preventDefault(); e.returnValue=""; } });
+
+  render();
+})();
+</script>
+</body>
+</html>
